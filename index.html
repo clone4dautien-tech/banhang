@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Bán hàng &amp; Khách hàng</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0F766E">
@@ -51,6 +51,19 @@ nav button.on{color:var(--pri);font-weight:700}
 #toast.on{opacity:1}
 label{font-size:13px;color:var(--mut)}
 .done{opacity:.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:4}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:3;background:var(--bg);display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.cartbtn{position:relative;min-width:52px;min-height:52px;border-radius:26px;background:var(--pri);color:var(--on);border:none;display:flex;align-items:center;justify-content:center;padding:0}
+.cartbtn b{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:var(--amb);color:var(--bg);font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
+.sheet{position:fixed;inset:0;z-index:8;background:var(--bg);overflow:auto;overscroll-behavior:contain;padding:calc(env(safe-area-inset-top,0px) + 12px) 20px calc(env(safe-area-inset-bottom,0px) + 24px)}
+.sheet>div{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.miss{border-color:var(--amb)}
+*{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+button{-webkit-user-select:none;user-select:none}
+input,select{font-size:16px}
+.modal{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 12vh) 20px 20px}
+.modal .card{width:100%;max-width:380px}
 </style>
 </head>
 <body>
@@ -76,13 +89,16 @@ const pad=n=>String(n).padStart(2,'0');
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
 const P={home:'M3 11 12 4l9 7v9H3z',sell:'M2 3h3l2.5 12h11L21 7H6',cal:'M3 8h18v13H3zM8 3v4M16 3v4',cust:'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21c0-4 4-6 8-6s8 2 8 6',box:'M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8',tag:'M20 12 12 20 4 12V4h8z',plus:'M12 5v14M5 12h14'};
 const ic=(n,s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
-let view='home',cart={},cust='',disc={t:'p',v:0},promoId='',pay='Tiền mặt';
+let view='home',cart={},cust='',disc={t:'p',v:0},promoId='',pay='Tiền mặt',cartOpen=false;
 const NAV={home:'Trang chủ',sell:'Bán hàng',cal:'Lịch',cust:'Khách'};
 for(const k in NAV)$('#n-'+k).innerHTML=ic(k)+NAV[k];
 function toast(m){const t=$('#toast');t.textContent=m;t.className='on';setTimeout(()=>t.className='',1800)}
 function go(v){view=v;render();scrollTo(0,0)}
 function render(){
+ const o=document.querySelector('.sheet'),st=o?o.scrollTop:0;
  $('#main').innerHTML=V[view]();
+ const n=document.querySelector('.sheet');if(n)n.scrollTop=st;
+ document.body.style.overflow=(view=='sell'&&cartOpen)?'hidden':'';
  for(const k in NAV)$('#n-'+k).className=(view==k||(k=='home'&&(view=='prod'||view=='promo')))?'on':'';
 }
 function set(a,id,k,v,num){const o=S[a].find(x=>x.id==id);if(o){o[k]=num?(+v||0):v;save()}}
@@ -90,26 +106,45 @@ function del(a,id){S[a]=S[a].filter(x=>x.id!=id);save();render()}
 function setS(k,v){S.set[k]=+v||0;save()}
 const okPromo=(p,sub)=>p.on&&sub>=p.min&&(!p.end||p.end>=today());
 function calc(){
- let sub=0;for(const id in cart){const p=S.products.find(x=>x.id==id);if(p)sub+=p.price*cart[id]}
+ let sub=0;for(const id in cart){if(S.products.some(x=>x.id==id))sub+=(cart[id].p||0)*cart[id].q}
  const pr=S.promos.find(x=>x.id==promoId);let pd=0;
  if(pr&&okPromo(pr,sub))pd=pr.t=='p'?sub*pr.v/100:pr.v;
  const md=disc.t=='p'?(sub-pd)*disc.v/100:+disc.v;
  const total=Math.max(0,sub-pd-md);
  return{sub,pd,md,total,pts:Math.floor(total*S.set.rate/100/(S.set.unit||1))};
 }
-function add(id){cart[id]=(cart[id]||0)+1;render()}
-function qty(id,d){cart[id]=(cart[id]||0)+d;if(cart[id]<=0)delete cart[id];render()}
+const cnt=()=>Object.keys(cart).reduce((n,id)=>n+cart[id].q,0);
+const missing=()=>Object.keys(cart).filter(id=>S.products.some(x=>x.id==id)&&!(cart[id].p>0)).length;
+function updB(){const b=$('#cb');if(b){const n=cnt();b.textContent=n;b.style.display=n?'flex':'none'}}
+function put(id,price){const p=S.products.find(x=>x.id==id);if(!p)return;if(!cart[id])cart[id]={q:0,p:price};cart[id].q++;updB();toast('Đã thêm '+p.name+' · giỏ có '+cnt()+' món')}
+function add(id){const p=S.products.find(x=>x.id==id);if(!p)return;if(cart[id]||p.price>0)return put(id,p.price>0?p.price:null);askPrice(id)}
+function askPrice(id){
+ const p=S.products.find(x=>x.id==id);pmClose();
+ const m=document.createElement('div');m.id='pmodal';m.className='modal';
+ m.innerHTML='<div class="card col" role="dialog" aria-label="Nhập giá"><b>'+esc(p.name)+'</b><label for="pmi">Nhập giá hôm nay (₫)</label><input id="pmi" type="number" min="0" inputmode="numeric" placeholder="Ví dụ 25000"><div class="row"><button class="grow" onclick="pmClose()">Huỷ</button><button class="grow pri" onclick="pmOk(\''+id+'\')">OK</button></div></div>';
+ m.addEventListener('keydown',e=>{if(e.key==='Enter')pmOk(id);if(e.key==='Escape')pmClose()});
+ m.addEventListener('click',e=>{if(e.target===m)pmClose()});
+ document.body.appendChild(m);$('#pmi').focus();
+}
+function pmClose(){const m=$('#pmodal');if(m)m.remove()}
+function pmOk(id){const v=+$('#pmi').value;if(!(v>0))return toast('Nhập giá lớn hơn 0');pmClose();put(id,v)}
+function qty(id,d){cart[id].q+=d;if(cart[id].q<=0)delete cart[id];render()}
+function setLP(id,v){cart[id].p=v===''?null:(+v||0);render()}
+function openCart(o){cartOpen=o;render()}
+function setPP(id,v){set('products',id,'price',v===''?null:(+v||null))}
 function checkout(){
- const c=calc();if(!c.sub)return toast('Chưa chọn sản phẩm');
- const items=Object.keys(cart).map(id=>{const p=S.products.find(x=>x.id==id);return{n:p.name,p:p.price,q:cart[id]}});
+ if(!cnt())return toast('Chưa chọn sản phẩm');
+ const m=missing();if(m)return toast('Còn '+m+' mặt hàng chưa nhập giá');
+ const c=calc();
+ const items=Object.keys(cart).filter(id=>S.products.some(x=>x.id==id)).map(id=>{const p=S.products.find(x=>x.id==id);return{n:p.name,p:cart[id].p,q:cart[id].q}});
  const cu=S.customers.find(x=>x.id==cust);
  const inv={id:'HD-'+pad(S.invoices.length+1).padStart(4,'0'),t:Date.now(),items,sub:c.sub,pd:c.pd,md:c.md,total:c.total,pts:cu?c.pts:0,cn:cu?cu.name:'Khách lẻ',pay};
  if(cu){cu.pts=(cu.pts||0)+c.pts;cu.spent=(cu.spent||0)+c.total}
  S.invoices.unshift(inv);save();
- cart={};disc={t:'p',v:0};promoId='';
+ cart={};disc={t:'p',v:0};promoId='';cust='';cartOpen=false;
  toast('Đã thanh toán '+money(inv.total)+(cu?' · +'+c.pts+' điểm':''));go('home');
 }
-function addP(){const n=$('#pn').value.trim();if(!n)return toast('Nhập tên hàng');S.products.push({id:uid(),name:n,price:+$('#pp').value||0});save();render()}
+function addP(){const n=$('#pn').value.trim();if(!n)return toast('Nhập tên hàng');S.products.push({id:uid(),name:n,price:$('#pp').value===''?null:(+$('#pp').value||null)});save();render()}
 function addC(){const n=$('#cn').value.trim();if(!n)return toast('Nhập tên khách');S.customers.push({id:uid(),name:n,phone:$('#cp').value.trim(),note:'',pts:0,spent:0});save();render()}
 function addPr(){const n=$('#rn').value.trim();if(!n||!(+$('#rv').value))return toast('Nhập tên và mức giảm');
  S.promos.push({id:uid(),name:n,t:$('#rt').value,v:+$('#rv').value,min:+$('#rm').value||0,end:$('#re').value,on:true});save();render()}
@@ -158,25 +193,29 @@ home(){
  <div class="card col">${S.invoices.slice(0,4).map(i=>`<div class="row sp"><div><b>${esc(i.cn)}</b><div class="mut">${i.id} · ${new Date(i.t).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})} · ${esc(i.pay)}</div></div><div style="text-align:right"><b>${money(i.total)}</b><div class="badge">+${i.pts} điểm</div></div></div>`).join('')||'<span class="mut">Chưa có hoá đơn.</span>'}</div>`;
 },
 sell(){
- const c=calc(),cu=S.customers.find(x=>x.id==cust);
+ const c=calc(),cu=S.customers.find(x=>x.id==cust),m=missing();
  const ids=Object.keys(cart).filter(id=>S.products.some(p=>p.id==id));
  const opts=S.promos.filter(p=>p.on&&(!p.end||p.end>=today()));
- return `<h1>Bán hàng</h1>
- ${S.products.length?`<div class="pg">${S.products.map(p=>`<button onclick="add('${p.id}')"><b>${esc(p.name)}</b><div class="mut">${money(p.price)}</div></button>`).join('')}</div>`:'<div class="card mut">Chưa có hàng hoá. Vào Trang chủ › Hàng hoá để thêm.</div>'}
- <div class="card col"><h2>Giỏ hàng</h2>
- ${ids.map(id=>{const p=S.products.find(x=>x.id==id);return `<div class="row"><div class="grow"><b>${esc(p.name)}</b><div class="mut">${money(p.price)} × ${cart[id]}</div></div><button class="sm" aria-label="Giảm" onclick="qty('${id}',-1)">−</button><b>${cart[id]}</b><button class="sm" aria-label="Tăng" onclick="qty('${id}',1)">+</button></div>`}).join('')||'<span class="mut">Chưa có sản phẩm.</span>'}</div>
+ const sheet=cartOpen?`<div class="sheet"><div>
+ <div class="row sp"><h1>Giỏ hàng (${cnt()})</h1><button onclick="openCart(false)">Đóng</button></div>
+ ${ids.map(id=>{const p=S.products.find(x=>x.id==id),l=cart[id],ok=l.p>0;return `<div class="card col"><div class="row sp"><b>${esc(p.name)}</b><span class="mut">${ok?money(l.p*l.q):'Chưa có giá'}</span></div><div class="row"><input class="${ok?'':'miss'}" type="number" min="0" inputmode="numeric" placeholder="Nhập giá (₫)" aria-label="Giá ${esc(p.name)}" value="${ok?l.p:''}" onchange="setLP('${id}',this.value)"><button class="sm" aria-label="Giảm" onclick="qty('${id}',-1)">−</button><b>${l.q}</b><button class="sm" aria-label="Tăng" onclick="qty('${id}',1)">+</button></div></div>`}).join('')||'<div class="card mut">Giỏ trống. Bấm Đóng rồi chọn hàng.</div>'}
  <div class="card col">
  <label for="sc">Khách hàng</label><select id="sc" onchange="cust=this.value;render()"><option value="">Khách lẻ (không tích điểm)</option>${S.customers.map(x=>`<option value="${x.id}" ${x.id==cust?'selected':''}>${esc(x.name)} · ${x.pts||0} điểm</option>`).join('')}</select>
  <label for="sp">Khuyến mãi</label><select id="sp" onchange="promoId=this.value;render()"><option value="">Không áp dụng</option>${opts.map(p=>`<option value="${p.id}" ${p.id==promoId?'selected':''}>${esc(p.name)}${okPromo(p,c.sub)?'':' (chưa đủ điều kiện)'}</option>`).join('')}</select>
  <label for="dv">Giảm giá thêm</label><div class="row"><input id="dv" type="number" min="0" inputmode="numeric" value="${disc.v||''}" placeholder="0" onchange="disc.v=+this.value||0;render()"><select aria-label="Loại giảm giá" style="width:90px" onchange="disc.t=this.value;render()"><option value="p" ${disc.t=='p'?'selected':''}>%</option><option value="d" ${disc.t=='d'?'selected':''}>₫</option></select></div>
  <label for="pm">Thanh toán</label><select id="pm" onchange="pay=this.value">${['Tiền mặt','Chuyển khoản','Thẻ'].map(x=>`<option ${x==pay?'selected':''}>${x}</option>`).join('')}</select></div>
  <div class="card tot"><div><span>Tạm tính</span><span>${money(c.sub)}</span></div><div><span>Khuyến mãi</span><span>−${money(c.pd)}</span></div><div><span>Giảm thêm</span><span>−${money(c.md)}</span></div><div class="big"><span>Tổng</span><span>${money(c.total)}</span></div><div class="mut"><span>${cu?'Điểm cộng cho '+esc(cu.name):'Chọn khách để tích điểm'}</span><span>${cu?'+'+c.pts:''}</span></div></div>
- <button class="btn pri" onclick="checkout()">Thanh toán</button>`;
+ ${m?`<div class="promo">Còn ${m} mặt hàng chưa nhập giá.</div>`:''}
+ <button class="btn pri" onclick="checkout()">Thanh toán</button>
+ </div></div>`:'';
+ return `<div class="top"><h1>Bán hàng</h1><button class="cartbtn" aria-label="Mở giỏ hàng" onclick="openCart(true)">${ic('sell',24)}<b id="cb" style="display:${cnt()?'flex':'none'}">${cnt()}</b></button></div>
+ ${S.products.length?`<div class="pg">${S.products.map(p=>`<button onclick="add('${p.id}')"><b>${esc(p.name)}</b><div class="mut">${p.price>0?money(p.price):'Giá nhập khi bán'}</div></button>`).join('')}</div>`:'<div class="card mut">Chưa có hàng hoá. Vào Trang chủ › Hàng hoá để thêm.</div>'}
+ ${sheet}`;
 },
 prod(){
  return `<div class="row"><button class="sm" aria-label="Quay lại" onclick="go('home')">‹</button><h1>Hàng hoá</h1></div>
- <div class="card col"><input id="pn" placeholder="Tên hàng" aria-label="Tên hàng"><input id="pp" type="number" min="0" inputmode="numeric" placeholder="Giá (₫)" aria-label="Giá"><button class="btn pri" onclick="addP()">Thêm hàng</button></div>
- ${S.products.map(p=>`<div class="card col"><input aria-label="Tên hàng" value="${esc(p.name)}" onchange="set('products','${p.id}','name',this.value)"><div class="row"><input aria-label="Giá" type="number" min="0" inputmode="numeric" value="${p.price}" onchange="set('products','${p.id}','price',this.value,1)"><button class="danger" onclick="del('products','${p.id}')">Xoá</button></div></div>`).join('')}`;
+ <div class="card col"><input id="pn" placeholder="Tên hàng" aria-label="Tên hàng"><input id="pp" type="number" min="0" inputmode="numeric" placeholder="Giá (₫) · để trống nếu giá thay đổi" aria-label="Giá"><button class="btn pri" onclick="addP()">Thêm hàng</button></div>
+ ${S.products.map(p=>`<div class="card col"><input aria-label="Tên hàng" value="${esc(p.name)}" onchange="set('products','${p.id}','name',this.value)"><div class="row"><input aria-label="Giá" type="number" min="0" inputmode="numeric" value="${p.price>0?p.price:''}" placeholder="Để trống nếu giá thay đổi" onchange="setPP('${p.id}',this.value)"><button class="danger" onclick="del('products','${p.id}')">Xoá</button></div></div>`).join('')}`;
 },
 promo(){
  return `<div class="row"><button class="sm" aria-label="Quay lại" onclick="go('home')">‹</button><h1>Khuyến mãi &amp; điểm</h1></div>
