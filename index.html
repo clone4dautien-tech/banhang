@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Bán hàng &amp; Khách hàng</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F766E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bán Hàng">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <style>
 :root{--bg:#F6F7F4;--card:#fff;--ink:#14201C;--mut:#5B6760;--line:#DDE2DC;--pri:#0F766E;--on:#fff;--soft:#E3F1EE;--softt:#0B5A53;--amb:#B45309;--ambbg:#FFF4E5;--ambl:#F3D9B1;--ambt:#8A4106;--red:#B42318;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1512;--card:#18201C;--ink:#EAF0EC;--mut:#A3B0A8;--line:#2B3630;--pri:#2DD4BF;--on:#06201C;--soft:#173A36;--softt:#8FE3D6;--amb:#FBBF77;--ambbg:#2E2210;--ambl:#4A3716;--ambt:#F5C98A;--red:#FDA29B;color-scheme:dark}}
@@ -199,6 +206,7 @@ cust(){
  <div class="row"><label for="p${x.id}">Chỉnh điểm</label><input id="p${x.id}" type="number" value="${x.pts||0}" onchange="set('customers','${x.id}','pts',this.value,1)"><button class="danger" onclick="del('customers','${x.id}')">Xoá</button></div></div>`).join('')}`;
 }};
 render();tick();
+if('serviceWorker' in navigator&&location.protocol.indexOf('http')==0){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 </script>
 </body>
 </html>
